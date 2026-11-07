@@ -1,0 +1,5 @@
+1. py chay-root.py
+2. Đợi máy lên bấm đồng ý điều khoản để vào home
+3. Nếu bấm cho phép shell su không kịp thì vào Magisk chọn tab 2 -> Kích hoạt shell
+3. Setup bàn phím (Bàn phím trung quốc + Tắt gợi ý Samsung)
+4. py wifi-va-am-thanh.py
