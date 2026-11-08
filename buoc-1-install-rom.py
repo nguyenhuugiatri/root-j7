@@ -184,6 +184,12 @@ class RomThread:
             cmd = ["adb", "-s", self.serial] + args
             # push hay lỗi do USB rớt khi nhiều máy cùng push -> thử lại tối đa 3 lần
             attempts = PUSH_RETRIES if args[0] == "push" else 1
+            if args[0] == "reboot":
+                # sau install adbd có thể restart -> chờ máy hiện lại, thử reboot vài lần
+                self.update_status(f"{label} chờ máy sẵn sàng...")
+                self.wait_recovery(120)
+                time.sleep(3)
+                attempts = 4
             for attempt in range(1, attempts + 1):
                 try:
                     if args[0] == "push-smart":
