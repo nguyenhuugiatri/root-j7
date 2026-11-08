@@ -22,7 +22,8 @@ os.makedirs(LOG_DIR, exist_ok=True)
 STEPS = [
     ("format data", ["shell", "twrp", "format", "data"], True, 300),
     ("wipe data", ["shell", "twrp", "wipe", "data"], True, 300),
-    # sau format/wipe, /data thường chưa được mount -> /sdcard chỉ là RAM, push đầy RAM rồi adbd chết
+    # TWRP: "You may need to reboot recovery to be able to use /data again" -> bắt buộc reboot recovery
+    ("reboot recovery", ["reboot", "recovery"], True, 60),
     ("mount data", ["shell", "twrp", "mount", "data"], True, 60),
     ("clear sdcard", ["shell", "rm", "-rf", "/sdcard/*"], True, 300),
     ("push rom.zip", ["push", ROM_FILE, "/sdcard/"], False, 1800),
@@ -113,6 +114,13 @@ class RomThread:
                 self.update_status(f"{label} lỗi, thử lại {attempt}/{attempts - 1}...")
                 self.wait_recovery(90)
                 time.sleep(3)
+            if args[:2] == ["reboot", "recovery"]:
+                time.sleep(10)  # chờ máy thật sự tắt rồi mới poll
+                self.update_status(f"{label} chờ recovery...")
+                if not self.wait_recovery(180):
+                    self.update_status(f"{StatusEnum.FAILED.value}: {desc}: không vào lại recovery")
+                    return
+                time.sleep(5)
             if code != 0:
                 self.log(f"[exit {code}]\n")
                 if not ignore_error:
