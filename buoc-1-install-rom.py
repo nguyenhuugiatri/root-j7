@@ -26,7 +26,7 @@ STEPS = [
     ("reboot recovery", ["reboot", "recovery"], True, 60),
     ("mount data", ["shell", "twrp", "mount", "data"], True, 60),
     ("clear sdcard", ["shell", "rm", "-rf", "/sdcard/*"], True, 300),
-    ("push rom.zip", ["push", ROM_FILE, "/sdcard/"], False, 1800),
+    ("push rom.zip", ["push", ROM_FILE, "/sdcard/rom.zip"], False, 1800),
     ("install rom.zip", ["shell", "twrp", "install", "/sdcard/rom.zip"], False, 3600),
     ("reboot", ["reboot"], False, 60),
 ]
