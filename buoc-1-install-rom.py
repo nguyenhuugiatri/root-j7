@@ -22,6 +22,8 @@ os.makedirs(LOG_DIR, exist_ok=True)
 STEPS = [
     ("format data", ["shell", "twrp", "format", "data"], True, 300),
     ("wipe data", ["shell", "twrp", "wipe", "data"], True, 300),
+    # sau format/wipe, /data thường chưa được mount -> /sdcard chỉ là RAM, push đầy RAM rồi adbd chết
+    ("mount data", ["shell", "twrp", "mount", "data"], True, 60),
     ("clear sdcard", ["shell", "rm", "-rf", "/sdcard/*"], True, 300),
     ("push rom.zip", ["push", ROM_FILE, "/sdcard/"], False, 1800),
     ("install rom.zip", ["shell", "twrp", "install", "/sdcard/rom.zip"], False, 3600),
