@@ -5,7 +5,7 @@ import sys
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from enum import Enum
-from threading import Thread
+from threading import Lock, Thread
 from colorama import init, Cursor
 import adbutils
 from devfilter import list_devices
@@ -26,12 +26,42 @@ STEPS = [
     ("reboot recovery", ["reboot", "recovery"], True, 60),
     ("mount data", ["shell", "twrp", "mount", "data"], True, 60),
     ("clear sdcard", ["shell", "rm", "-rf", "/sdcard/*"], True, 300),
-    ("push rom.zip", ["push", ROM_FILE, "/sdcard/rom.zip"], False, 1800),
+    # adbd của TWRP lỗi khi push file lớn (>~300MB) -> cắt nhỏ, push từng phần rồi ghép bằng cat
+    ("push rom.zip", ["push-chunked"], False, 1800),
     ("install rom.zip", ["shell", "twrp", "install", "/sdcard/rom.zip"], False, 3600),
     ("reboot", ["reboot"], False, 60),
 ]
 
 PUSH_RETRIES = 3
+CHUNK_SIZE = 100 * 1024 * 1024  # 100MB/phần
+CHUNK_RETRIES = 4
+PARTS_DIR = os.path.join(BASE_DIR, "rom_parts")
+_split_lock = Lock()
+
+
+def prepare_parts():
+    """Cắt rom.zip thành các phần nhỏ (1 lần, dùng chung mọi máy). Trả về list đường dẫn."""
+    with _split_lock:
+        size = os.path.getsize(ROM_FILE)
+        stamp = f"{size}:{int(os.path.getmtime(ROM_FILE))}:{CHUNK_SIZE}"
+        marker = os.path.join(PARTS_DIR, "stamp.txt")
+        n = (size + CHUNK_SIZE - 1) // CHUNK_SIZE
+        names = [os.path.join(PARTS_DIR, f"rom.part{i:03d}") for i in range(n)]
+        try:
+            with open(marker) as f:
+                if f.read() == stamp and all(os.path.exists(p) for p in names):
+                    return names
+        except OSError:
+            pass
+        shutil.rmtree(PARTS_DIR, ignore_errors=True)
+        os.makedirs(PARTS_DIR)
+        with open(ROM_FILE, "rb") as src:
+            for p in names:
+                with open(p, "wb") as dst:
+                    dst.write(src.read(CHUNK_SIZE))
+        with open(marker, "w") as f:
+            f.write(stamp)
+        return names
 
 adb = adbutils.AdbClient()
 
@@ -80,6 +110,41 @@ class RomThread:
         proc.wait()
         return proc.returncode, output.decode("utf-8", errors="replace")
 
+    def remote_size(self, path):
+        r = subprocess.run(["adb", "-s", self.serial, "shell", f"wc -c < {path}"],
+                           capture_output=True, text=True, timeout=60)
+        try:
+            return int(r.stdout.strip())
+        except ValueError:
+            return -1
+
+    def push_chunked(self, label, timeout):
+        """Push rom.zip theo từng phần nhỏ rồi ghép trên máy. Trả về (code, output)."""
+        self.update_status(f"{label} đang cắt file...")
+        parts = prepare_parts()
+        total = len(parts)
+        for i, part in enumerate(parts, 1):
+            remote = f"/sdcard/{os.path.basename(part)}"
+            expected = os.path.getsize(part)
+            for attempt in range(1, CHUNK_RETRIES + 1):
+                code, out = self.run_cmd(f"{label} phần {i}/{total}",
+                                         ["adb", "-s", self.serial, "push", part, remote], timeout)
+                if code == 0 or self.remote_size(remote) == expected:
+                    break
+                self.log(f"[phần {i} lỗi, thử lại {attempt}/{CHUNK_RETRIES}]\n")
+                self.wait_recovery(90)
+                time.sleep(2)
+            else:
+                return 1, f"push phần {i}/{total} lỗi"
+            if self.remote_size(remote) != expected:
+                return 1, f"phần {i}/{total} sai kích thước"
+        self.update_status(f"{label} đang ghép file...")
+        code, out = self.run_cmd(label, ["adb", "-s", self.serial, "shell",
+                                         "cat /sdcard/rom.part* > /sdcard/rom.zip && rm -f /sdcard/rom.part*"], 600)
+        if self.remote_size("/sdcard/rom.zip") != os.path.getsize(ROM_FILE):
+            return 1, "rom.zip trên máy sai kích thước sau khi ghép"
+        return 0, ""
+
     def wait_recovery(self, timeout):
         """Poll trạng thái adb tới khi 'recovery' hoặc hết timeout (không ném lỗi)."""
         start = time.time()
@@ -105,7 +170,10 @@ class RomThread:
             attempts = PUSH_RETRIES if args[0] == "push" else 1
             for attempt in range(1, attempts + 1):
                 try:
-                    code, out = self.run_cmd(label, cmd, timeout)
+                    if args[0] == "push-chunked":
+                        code, out = self.push_chunked(label, timeout)
+                    else:
+                        code, out = self.run_cmd(label, cmd, timeout)
                 except Exception as e:
                     code, out = -1, str(e)
                 if code == 0 or attempt == attempts:
