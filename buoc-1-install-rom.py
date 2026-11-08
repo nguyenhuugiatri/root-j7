@@ -26,8 +26,8 @@ STEPS = [
     ("reboot recovery", ["reboot", "recovery"], True, 60),
     ("mount data", ["shell", "twrp", "mount", "data"], True, 60),
     ("clear sdcard", ["shell", "rm", "-rf", "/sdcard/*"], True, 300),
-    # adbd của TWRP lỗi khi push file lớn (>~300MB) -> cắt nhỏ, push từng phần rồi ghép bằng cat
-    ("push rom.zip", ["push-chunked"], False, 1800),
+    # push thẳng; nếu máy lỗi (adbd hỏng với file lớn) thì tự chuyển sang cắt nhỏ + ghép bằng cat
+    ("push rom.zip", ["push-smart"], False, 1800),
     ("install rom.zip", ["shell", "twrp", "install", "/sdcard/rom.zip"], False, 3600),
     ("reboot", ["reboot"], False, 60),
 ]
@@ -118,6 +118,22 @@ class RomThread:
         except ValueError:
             return -1
 
+    def push_smart(self, label, timeout):
+        """Push thẳng rom.zip; chỉ khi lỗi (máy có adbd hỏng) mới chuyển sang push cắt nhỏ."""
+        size = os.path.getsize(ROM_FILE)
+        for attempt in range(1, PUSH_RETRIES + 1):
+            code, out = self.run_cmd(label, ["adb", "-s", self.serial, "push", ROM_FILE, "/sdcard/rom.zip"], timeout)
+            if code == 0 or self.remote_size("/sdcard/rom.zip") == size:
+                return 0, out
+            self.log(f"[push thẳng lỗi {attempt}/{PUSH_RETRIES}]\n")
+            if attempt < PUSH_RETRIES:
+                self.update_status(f"{label} lỗi, thử lại {attempt}/{PUSH_RETRIES - 1}...")
+                self.wait_recovery(90)
+                time.sleep(3)
+        self.log("[chuyển sang push cắt nhỏ]\n")
+        subprocess.run(["adb", "-s", self.serial, "shell", "rm -f /sdcard/rom.zip"], timeout=60)
+        return self.push_chunked(f"{label} (cắt nhỏ)", timeout)
+
     def push_chunked(self, label, timeout):
         """Push rom.zip theo từng phần nhỏ rồi ghép trên máy. Trả về (code, output)."""
         self.update_status(f"{label} đang cắt file...")
@@ -170,8 +186,8 @@ class RomThread:
             attempts = PUSH_RETRIES if args[0] == "push" else 1
             for attempt in range(1, attempts + 1):
                 try:
-                    if args[0] == "push-chunked":
-                        code, out = self.push_chunked(label, timeout)
+                    if args[0] == "push-smart":
+                        code, out = self.push_smart(label, timeout)
                     else:
                         code, out = self.run_cmd(label, cmd, timeout)
                 except Exception as e:
