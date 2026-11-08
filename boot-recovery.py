@@ -4,6 +4,19 @@ import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from enum import Enum
 from threading import Thread
+import subprocess
+
+
+def _ensure(module, package=None):
+    try:
+        __import__(module)
+    except ModuleNotFoundError:
+        subprocess.check_call([sys.executable, "-m", "pip", "install", package or module])
+
+
+_ensure("colorama")
+_ensure("adbutils")
+
 from colorama import init, Cursor
 import adbutils
 from devfilter import list_devices
