@@ -82,13 +82,17 @@ class RomThread:
         with open(os.path.join(LOG_DIR, f"{self.serial}.log"), "a", encoding="utf-8") as f:
             f.write(text)
 
+    def note(self, text):
+        """Dòng log có thời gian."""
+        self.log(f"[{time.strftime('%H:%M:%S')}] {text}\n")
+
     def run_cmd(self, label, cmd, timeout):
         """Chạy lệnh, cập nhật status liên tục (thời gian + dòng output mới nhất).
         Trả về (returncode, output)."""
         start = time.time()
         last_line = ""
         output = b""
-        self.log(f"\n$ {' '.join(cmd)}\n")
+        self.log(f"\n[{time.strftime('%H:%M:%S')}] $ {' '.join(cmd)}\n")
         proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
         fd = proc.stdout.fileno()
         while True:
@@ -105,18 +109,21 @@ class RomThread:
             self.update_status(f"{label} ({elapsed}s) {last_line}")
             if time.time() - start > timeout:
                 proc.kill()
-                self.log("\n[TIMEOUT]\n")
+                self.note(f"TIMEOUT sau {timeout}s")
                 return -1, output.decode("utf-8", errors="replace") + "\nTIMEOUT"
         proc.wait()
+        self.note(f"-> exit {proc.returncode} ({int(time.time() - start)}s)")
         return proc.returncode, output.decode("utf-8", errors="replace")
 
     def remote_size(self, path):
         r = subprocess.run(["adb", "-s", self.serial, "shell", f"wc -c < {path}"],
                            capture_output=True, text=True, timeout=60)
         try:
-            return int(r.stdout.strip())
+            size = int(r.stdout.strip())
         except ValueError:
-            return -1
+            size = -1
+        self.note(f"kiểm tra kích thước {path} = {size}")
+        return size
 
     def push_smart(self, label, timeout):
         """Push thẳng rom.zip; chỉ khi lỗi (máy có adbd hỏng) mới chuyển sang push cắt nhỏ."""
@@ -131,6 +138,7 @@ class RomThread:
                 self.wait_recovery(90)
                 time.sleep(3)
         self.log("[chuyển sang push cắt nhỏ]\n")
+        self.note("xóa /sdcard/rom.zip dở dang")
         subprocess.run(["adb", "-s", self.serial, "shell", "rm -f /sdcard/rom.zip"], timeout=60)
         return self.push_chunked(f"{label} (cắt nhỏ)", timeout)
 
@@ -169,17 +177,28 @@ class RomThread:
                 r = subprocess.run(["adb", "-s", self.serial, "get-state"],
                                    capture_output=True, text=True, timeout=10)
                 if r.stdout.strip() == "recovery":
+                    self.note(f"máy ở recovery (chờ {int(time.time() - start)}s)")
                     return True
             except Exception:
                 pass
             time.sleep(2)
-        self.log(f"[không thấy recovery sau {timeout}s, vẫn thử lại]\n")
+        self.note(f"không thấy recovery sau {timeout}s, vẫn thử lại")
         return False
 
     def run(self):
+        self.log(f"\n{'=' * 60}\n[{time.strftime('%Y-%m-%d %H:%M:%S')}] BẮT ĐẦU {self.serial}\n{'=' * 60}\n")
+        try:
+            self._run()
+        except Exception as e:
+            import traceback
+            self.log(traceback.format_exc())
+            self.update_status(f"{StatusEnum.FAILED.value}: exception: {e}")
+
+    def _run(self):
         total = len(STEPS)
         for i, (desc, args, ignore_error, timeout) in enumerate(STEPS, 1):
             label = f"[{i}/{total}] {desc}"
+            self.note(f"== {label}")
             self.update_status(f"{label} (0s)")
             cmd = ["adb", "-s", self.serial] + args
             # push hay lỗi do USB rớt khi nhiều máy cùng push -> thử lại tối đa 3 lần
@@ -222,6 +241,8 @@ class RomThread:
 
     def update_status(self, status: str):
         STATUS[self.serial] = status
+        if is_finished(status):
+            self.note(f"KẾT QUẢ: {status}")
 
 
 def is_finished(status):
@@ -261,7 +282,10 @@ def main():
 
     max_threads = 5
     threads = []
+    only = set(sys.argv[1:])  # truyền serial để chỉ chạy các máy đó
     for device in list_devices(adb):
+        if only and device.serial not in only:
+            continue
         if device.state == 'recovery':
             STATUS[device.serial] = StatusEnum.PENDING
             threads.append(RomThread(serial=device.serial))

@@ -152,7 +152,9 @@ def main():
     if not os.path.isfile(APK):
         print(f"Missing adb-join-wifi.apk in {BASE_DIR}")
         return
-    serials = [dev.serial for dev in list_devices(adb) if dev.state == "device"]
+    only = set(sys.argv[1:])  # truyền serial để chỉ chạy các máy đó
+    serials = [dev.serial for dev in list_devices(adb)
+               if dev.state == "device" and (not only or dev.serial in only)]
     if not serials:
         print("No running devices found.")
         return

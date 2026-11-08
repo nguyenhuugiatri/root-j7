@@ -24,6 +24,8 @@ POST_COMMAND = "adb -s {serial} shell su"
 # --------------------------------------------------------------------
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+LOG_DIR = os.path.join(BASE_DIR, "logs")  # log đầy đủ từng máy: logs/<serial>-magisk.log
+os.makedirs(LOG_DIR, exist_ok=True)
 
 adb = adbutils.AdbClient()
 
@@ -41,7 +43,20 @@ class InstallThread:
         self.serial = serial
         self.d = adb.device(serial=serial)
 
+    def log(self, text):
+        with open(os.path.join(LOG_DIR, f"{self.serial}-magisk.log"), "a", encoding="utf-8") as f:
+            f.write(f"[{time.strftime('%H:%M:%S')}] {text}\n")
+
     def run(self):
+        self.log(f"{'=' * 50}\nBẮT ĐẦU {self.serial} {time.strftime('%Y-%m-%d %H:%M:%S')}")
+        try:
+            self._run()
+        except Exception as e:
+            import traceback
+            self.log(traceback.format_exc())
+            self.update_status(f"{StatusEnum.FAILED.value}: exception: {e}")
+
+    def _run(self):
         total = len(APK_FILES)
         for i, name in enumerate(APK_FILES, 1):
             path = os.path.join(BASE_DIR, name)
@@ -50,6 +65,7 @@ class InstallThread:
             try:
                 # APK cuối cùng: cài xong tự động mở app
                 self.d.install(path, nolaunch=not is_last)
+                self.log(f"cài xong {name} (nolaunch={not is_last})")
             except Exception as e:
                 self.update_status(f"{StatusEnum.FAILED.value}: {name}: {e}")
                 return
@@ -61,6 +77,7 @@ class InstallThread:
                 shlex.split(POST_COMMAND.format(serial=self.serial)),
                 capture_output=True, text=True, timeout=120,
             )
+            self.log(f"exit {result.returncode}\n  stdout: {result.stdout.strip()}\n  stderr: {result.stderr.strip()}")
             if result.returncode != 0:
                 err = (result.stderr or result.stdout).strip()
                 self.update_status(f"{StatusEnum.FAILED.value}: command: {err}")
@@ -72,6 +89,7 @@ class InstallThread:
 
     def update_status(self, status: str):
         STATUS[self.serial] = status
+        self.log(f"== {status}")
 
 
 def is_finished(status):
@@ -110,7 +128,10 @@ def main():
 
     max_threads = 5
     threads = []
+    only = set(sys.argv[1:])  # truyền serial để chỉ chạy các máy đó
     for device in list_devices(adb):
+        if only and device.serial not in only:
+            continue
         if device.state == 'device':
             STATUS[device.serial] = StatusEnum.PENDING
             threads.append(InstallThread(serial=device.serial))

@@ -1,4 +1,5 @@
 import os
+import sys
 import time
 from concurrent.futures import ThreadPoolExecutor
 from threading import Lock
@@ -133,7 +134,9 @@ def apply(serial):
 
 
 def main():
-    serials = [dev.serial for dev in list_devices(adb) if dev.state == "device"]
+    only = set(sys.argv[1:])  # truyền serial để chỉ chạy các máy đó
+    serials = [dev.serial for dev in list_devices(adb)
+               if dev.state == "device" and (not only or dev.serial in only)]
     if not serials:
         print("No running devices found.")
         return
