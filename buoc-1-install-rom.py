@@ -33,7 +33,7 @@ STEPS = [
 ]
 
 PUSH_RETRIES = 3
-CHUNK_SIZE = 100 * 1024 * 1024  # 100MB/phần
+CHUNK_SIZE = 300 * 1024 * 1024  # 300MB/phần (nếu hay lỗi thì hạ xuống 100MB)
 CHUNK_RETRIES = 4
 PARTS_DIR = os.path.join(BASE_DIR, "rom_parts")
 _split_lock = Lock()
