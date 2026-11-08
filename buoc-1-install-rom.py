@@ -77,6 +77,21 @@ class RomThread:
         proc.wait()
         return proc.returncode, output.decode("utf-8", errors="replace")
 
+    def wait_recovery(self, timeout):
+        """Poll trạng thái adb tới khi 'recovery' hoặc hết timeout (không ném lỗi)."""
+        start = time.time()
+        while time.time() - start < timeout:
+            try:
+                r = subprocess.run(["adb", "-s", self.serial, "get-state"],
+                                   capture_output=True, text=True, timeout=10)
+                if r.stdout.strip() == "recovery":
+                    return True
+            except Exception:
+                pass
+            time.sleep(2)
+        self.log(f"[không thấy recovery sau {timeout}s, vẫn thử lại]\n")
+        return False
+
     def run(self):
         total = len(STEPS)
         for i, (desc, args, ignore_error, timeout) in enumerate(STEPS, 1):
@@ -94,9 +109,8 @@ class RomThread:
                     break
                 self.log(f"[retry {attempt}/{attempts - 1}] exit {code}\n")
                 self.update_status(f"{label} lỗi, thử lại {attempt}/{attempts - 1}...")
-                subprocess.run(["adb", "-s", self.serial, "wait-for-recovery"],
-                               timeout=60, capture_output=True)
-                time.sleep(5)
+                self.wait_recovery(90)
+                time.sleep(3)
             if code != 0:
                 self.log(f"[exit {code}]\n")
                 if not ignore_error:
