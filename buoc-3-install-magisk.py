@@ -17,6 +17,10 @@ APK_FILES = [
     "app-magisk23.apk",
     "Root_Checker.apk",
 ]
+# APK không bắt buộc: thiếu file hoặc cài lỗi thì bỏ qua, không báo FAILED.
+OPTIONAL_APKS = {"Root_Checker.apk"}
+# Package của app Magisk, được mở ở cuối bước.
+MAGISK_PACKAGE = "com.topjohnwu.magisk"
 
 # Lệnh chạy sau khi cài xong + mở app cuối cùng. {serial} sẽ được thay bằng serial máy.
 # Chạy trên từng máy. Đổi lệnh ở đây.
@@ -61,30 +65,41 @@ class InstallThread:
         for i, name in enumerate(APK_FILES, 1):
             path = os.path.join(BASE_DIR, name)
             self.update_status(f"[{i}/{total}] installing {name}")
-            is_last = i == total
+            if name in OPTIONAL_APKS and not os.path.isfile(path):
+                self.log(f"bỏ qua {name} (không có file, không bắt buộc)")
+                continue
             try:
-                # APK cuối cùng: cài xong tự động mở app
-                self.d.install(path, nolaunch=not is_last)
-                self.log(f"cài xong {name} (nolaunch={not is_last})")
+                # Không tự mở app khi cài; Magisk được mở ở cuối bước
+                self.d.install(path, nolaunch=True)
+                self.log(f"cài xong {name}")
             except Exception as e:
+                if name in OPTIONAL_APKS:
+                    self.log(f"cài {name} lỗi (không bắt buộc, bỏ qua): {e}")
+                    continue
                 self.update_status(f"{StatusEnum.FAILED.value}: {name}: {e}")
                 return
             time.sleep(1)
         time.sleep(2)  # chờ app mở lên
         self.update_status(f"running: {POST_COMMAND.format(serial=self.serial)}")
+        # Lệnh này không bắt buộc: lỗi (vd user không kịp bấm cho phép su)
+        # chỉ ghi log, vẫn coi là Done để qua bước tiếp theo.
         try:
             result = subprocess.run(
                 shlex.split(POST_COMMAND.format(serial=self.serial)),
                 capture_output=True, text=True, timeout=120,
+                stdin=subprocess.DEVNULL,
             )
             self.log(f"exit {result.returncode}\n  stdout: {result.stdout.strip()}\n  stderr: {result.stderr.strip()}")
-            if result.returncode != 0:
-                err = (result.stderr or result.stdout).strip()
-                self.update_status(f"{StatusEnum.FAILED.value}: command: {err}")
-                return
         except Exception as e:
-            self.update_status(f"{StatusEnum.FAILED.value}: command: {e}")
-            return
+            self.log(f"command lỗi (bỏ qua): {e}")
+        # Cuối bước: mở sẵn Magisk trên máy
+        try:
+            out = self.d.shell(
+                f"monkey -p {MAGISK_PACKAGE} -c android.intent.category.LAUNCHER 1"
+            )
+            self.log(f"mở Magisk: {str(out).strip()}")
+        except Exception as e:
+            self.log(f"mở Magisk lỗi (bỏ qua): {e}")
         self.update_status(StatusEnum.DONE)
 
     def update_status(self, status: str):
@@ -121,7 +136,7 @@ def display_statuses():
 
 
 def main():
-    missing = [n for n in APK_FILES if not os.path.isfile(os.path.join(BASE_DIR, n))]
+    missing = [n for n in APK_FILES if n not in OPTIONAL_APKS and not os.path.isfile(os.path.join(BASE_DIR, n))]
     if missing:
         print(f"Missing APK files in {BASE_DIR}: {', '.join(missing)}")
         return

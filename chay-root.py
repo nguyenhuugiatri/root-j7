@@ -54,7 +54,6 @@ REQUIRED_FILES = [
     "rom.zip",  # buoc-1
     "root.zip",  # buoc-2
     "app-magisk23.apk",  # buoc-3
-    "Root_Checker.apk",  # buoc-3
     "boot-recovery.py",
     "buoc-1-install-rom.py",
     "buoc-2-root.py",
