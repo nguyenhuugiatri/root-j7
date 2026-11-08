@@ -8,6 +8,7 @@ from enum import Enum
 from threading import Thread
 from colorama import init, Cursor
 import adbutils
+from devfilter import list_devices
 
 init()
 
@@ -109,7 +110,7 @@ def main():
 
     max_threads = 5
     threads = []
-    for device in adb.list():
+    for device in list_devices(adb):
         if device.state == 'device':
             STATUS[device.serial] = StatusEnum.PENDING
             threads.append(InstallThread(serial=device.serial))

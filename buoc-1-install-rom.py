@@ -8,6 +8,7 @@ from enum import Enum
 from threading import Thread
 from colorama import init, Cursor
 import adbutils
+from devfilter import list_devices
 
 init()
 
@@ -26,6 +27,8 @@ STEPS = [
     ("install rom.zip", ["shell", "twrp", "install", "/sdcard/rom.zip"], False, 3600),
     ("reboot", ["reboot"], False, 60),
 ]
+
+PUSH_RETRIES = 3
 
 adb = adbutils.AdbClient()
 
@@ -80,10 +83,20 @@ class RomThread:
             label = f"[{i}/{total}] {desc}"
             self.update_status(f"{label} (0s)")
             cmd = ["adb", "-s", self.serial] + args
-            try:
-                code, out = self.run_cmd(label, cmd, timeout)
-            except Exception as e:
-                code, out = -1, str(e)
+            # push hay lỗi do USB rớt khi nhiều máy cùng push -> thử lại tối đa 3 lần
+            attempts = PUSH_RETRIES if args[0] == "push" else 1
+            for attempt in range(1, attempts + 1):
+                try:
+                    code, out = self.run_cmd(label, cmd, timeout)
+                except Exception as e:
+                    code, out = -1, str(e)
+                if code == 0 or attempt == attempts:
+                    break
+                self.log(f"[retry {attempt}/{attempts - 1}] exit {code}\n")
+                self.update_status(f"{label} lỗi, thử lại {attempt}/{attempts - 1}...")
+                subprocess.run(["adb", "-s", self.serial, "wait-for-recovery"],
+                               timeout=60, capture_output=True)
+                time.sleep(5)
             if code != 0:
                 self.log(f"[exit {code}]\n")
                 if not ignore_error:
@@ -134,7 +147,7 @@ def main():
 
     max_threads = 5
     threads = []
-    for device in adb.list():
+    for device in list_devices(adb):
         if device.state == 'recovery':
             STATUS[device.serial] = StatusEnum.PENDING
             threads.append(RomThread(serial=device.serial))

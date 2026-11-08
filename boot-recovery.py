@@ -6,6 +6,7 @@ from enum import Enum
 from threading import Thread
 from colorama import init, Cursor
 import adbutils
+from devfilter import list_devices
 
 init()
 
@@ -43,7 +44,7 @@ class RecoveryThread:
         time.sleep(3)
         for x in range(timeout):
             try:
-                for info in adb.list():
+                for info in list_devices(adb):
                     if info.serial == self.serial and info.state == 'recovery':
                         return False
             except Exception:
@@ -88,7 +89,7 @@ def display_statuses():
 def main():
     max_threads = 5
     threads = []
-    for device in adb.list():
+    for device in list_devices(adb):
         if device.state == 'device':  # running normally (booted into Android)
             STATUS[device.serial] = StatusEnum.PENDING
             threads.append(RecoveryThread(serial=device.serial))

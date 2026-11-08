@@ -3,6 +3,7 @@ import time
 from concurrent.futures import ThreadPoolExecutor
 from threading import Lock
 import adbutils
+from devfilter import list_devices
 
 MAX_THREADS = 5
 # Nếu máy vẫn kẹt ở "Rung": đặt True để thử gọi service audio với nhiều mã transaction
@@ -132,7 +133,7 @@ def apply(serial):
 
 
 def main():
-    serials = [dev.serial for dev in adb.list() if dev.state == "device"]
+    serials = [dev.serial for dev in list_devices(adb) if dev.state == "device"]
     if not serials:
         print("No running devices found.")
         return

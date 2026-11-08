@@ -7,6 +7,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from threading import Thread
 from colorama import init, Cursor
 import adbutils
+from devfilter import list_devices
 
 init()
 
@@ -151,7 +152,7 @@ def main():
     if not os.path.isfile(APK):
         print(f"Missing adb-join-wifi.apk in {BASE_DIR}")
         return
-    serials = [dev.serial for dev in adb.list() if dev.state == "device"]
+    serials = [dev.serial for dev in list_devices(adb) if dev.state == "device"]
     if not serials:
         print("No running devices found.")
         return

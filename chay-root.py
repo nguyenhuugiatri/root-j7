@@ -3,6 +3,7 @@ import subprocess
 import sys
 import time
 import adbutils
+from devfilter import list_devices
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 adb = adbutils.AdbClient()
@@ -19,7 +20,7 @@ def run_script(name):
 
 
 def states():
-    return {d.serial: d.state for d in adb.list()}
+    return {d.serial: d.state for d in list_devices(adb)}
 
 
 def boot_completed(serial):

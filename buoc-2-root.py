@@ -6,6 +6,7 @@ from enum import Enum
 from threading import Thread
 from colorama import init, Cursor
 import adbutils
+from devfilter import list_devices
 
 init()
 
@@ -69,7 +70,7 @@ class InstallThread:
     def reboot_to_recovery(self, step=None):
         self.d.shell('reboot recovery')
         for x in range(200):
-            for info in adb.list():
+            for info in list_devices(adb):
                 if info.state == 'recovery' and info.serial == self.serial:
                     self.update_status(f"reboot recovery completed {step}")
                     return False
@@ -118,7 +119,7 @@ def main():
         return
     max_threads = 5
     install_threads = []
-    for device in adb.list():
+    for device in list_devices(adb):
         if device.state == 'recovery':
             INSTALL_STATUS[device.serial] = StatusEnum.PENDING
             install_thread = InstallThread(serial=device.serial)
