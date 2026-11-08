@@ -49,7 +49,29 @@ def wait_all(serials, target):
     sys.exit(1)
 
 
+REQUIRED_FILES = [
+    "rom.zip",  # buoc-1
+    "root.zip",  # buoc-2
+    "app-magisk23.apk",  # buoc-3
+    "Root_Checker.apk",  # buoc-3
+    "boot-recovery.py",
+    "buoc-1-install-rom.py",
+    "buoc-2-root.py",
+    "buoc-3-install-magisk.py",
+]
+
+
+def check_files():
+    missing = [n for n in REQUIRED_FILES if not os.path.isfile(os.path.join(BASE_DIR, n))]
+    if missing:
+        print(f"Thiếu file trong {BASE_DIR}:")
+        for n in missing:
+            print(f"  - {n}")
+        sys.exit(1)
+
+
 def main():
+    check_files()
     current = states()
     serials = [s for s, st in current.items() if st in ("device", "recovery")]
     if not serials:

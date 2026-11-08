@@ -18,7 +18,20 @@ def run_script(name):
         sys.exit(result.returncode)
 
 
+REQUIRED_FILES = ["adb-join-wifi.apk"] + STEPS  # apk dùng cho buoc-4
+
+
+def check_files():
+    missing = [n for n in REQUIRED_FILES if not os.path.isfile(os.path.join(BASE_DIR, n))]
+    if missing:
+        print(f"Thiếu file trong {BASE_DIR}:")
+        for n in missing:
+            print(f"  - {n}")
+        sys.exit(1)
+
+
 def main():
+    check_files()
     for name in STEPS:
         run_script(name)
     print("\nWIFI + AM THANH COMPLETED!")

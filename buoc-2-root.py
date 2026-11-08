@@ -113,6 +113,9 @@ def display_statuses():
 
 
 def main():
+    if not os.path.isfile(os.path.abspath('root.zip')):
+        print(f"Missing root.zip in {os.getcwd()}")
+        return
     max_threads = 5
     install_threads = []
     for device in adb.list():
